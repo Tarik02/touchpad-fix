@@ -24,6 +24,8 @@ namespace touchpad_fix
 		private static Guid guid = new Guid("{745a17a0-74d3-11d0-b6fe-00a0c90f57da}");
 		private static string instancePath = @"ROOT\SYNHIDMINI\0000";
 
+		private static bool shouldFix;
+
 		static void Main(string[] args)
 		{
 			if (args.Length != 0)
@@ -40,15 +42,13 @@ namespace touchpad_fix
 			}
 			catch (Win32Exception e)
 			{
-				if (e.NativeErrorCode == 5)
-				{
-					Console.WriteLine("This application should be run by administrator.");
-					Console.WriteLine("This is required in order to enable/disable device.");
+				if (e.NativeErrorCode != 5) throw;
 
-					return;
-				}
+				Console.WriteLine("This application should be run by administrator.");
+				Console.WriteLine("This is required in order to enable/disable device.");
 
-				throw;
+				return;
+
 			}
 
 			ShowWindow(GetConsoleWindow(), SW_HIDE);
@@ -64,17 +64,26 @@ namespace touchpad_fix
 				return;
 			}
 
-			var timer = new Timer(OnTimerElapsed, null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
-
 			bool signaled;
 			do
 			{
 				signaled = waitHandle.WaitOne(TimeSpan.FromSeconds(5));
-			} while (!signaled);
-		}
 
-		private static void OnTimerElapsed(object state)
-		{
+				if (!shouldFix)
+				{
+					continue;
+				}
+
+				try
+				{
+					FixTouchpad();
+					shouldFix = false;
+				}
+				catch (Exception ex)
+				{
+					Console.Error.WriteLine(ex);
+				}
+			} while (!signaled);
 		}
 
 		private static void OnPowerChange(object s, PowerModeChangedEventArgs e)
@@ -82,7 +91,17 @@ namespace touchpad_fix
 			switch ( e.Mode )
 			{
 				case PowerModes.Resume:
-					FixTouchpad();
+					if (shouldFix) return;
+
+					try
+					{
+						FixTouchpad();
+					}
+					catch (Exception ex)
+					{
+						Console.Error.WriteLine(ex);
+						shouldFix = true;
+					}
 					break;
 				case PowerModes.Suspend:
 					break;
